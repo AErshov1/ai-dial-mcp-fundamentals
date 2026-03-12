@@ -22,14 +22,19 @@ class DialClient:
 
     def _collect_tool_calls(self, tool_deltas):
         """Convert streaming tool call deltas to complete tool calls"""
-        tool_dict = defaultdict(lambda: {"id": None, "function": {"arguments": "", "name": None}, "type": None})
+        tool_dict = defaultdict(lambda: {"id": None, "function": {
+                                "arguments": "", "name": None}, "type": None})
 
         for delta in tool_deltas:
             idx = delta.index
-            if delta.id: tool_dict[idx]["id"] = delta.id
-            if delta.function.name: tool_dict[idx]["function"]["name"] = delta.function.name
-            if delta.function.arguments: tool_dict[idx]["function"]["arguments"] += delta.function.arguments
-            if delta.type: tool_dict[idx]["type"] = delta.type
+            if delta.id:
+                tool_dict[idx]["id"] = delta.id
+            if delta.function.name:
+                tool_dict[idx]["function"]["name"] = delta.function.name
+            if delta.function.arguments:
+                tool_dict[idx]["function"]["arguments"] += delta.function.arguments
+            if delta.type:
+                tool_dict[idx]["type"] = delta.type
 
         return list(tool_dict.values())
 
@@ -65,7 +70,8 @@ class DialClient:
         return Message(
             role=Role.AI,
             content=content,
-            tool_calls=self._collect_tool_calls(tool_deltas) if tool_deltas else []
+            tool_calls=self._collect_tool_calls(
+                tool_deltas) if tool_deltas else []
         )
 
     async def get_completion(self, messages: list[Message]) -> Message:
@@ -83,9 +89,30 @@ class DialClient:
 
     async def _call_tools(self, ai_message: Message, messages: list[Message]):
         """Execute tool calls using MCP client"""
-        #TODO:
         # 1. Iterate through tool_calls
         # 2. Get tool name and tool arguments (arguments is a JSON, don't forget about that)
         # 3. Wrap into try/except block and call mcp_client tool call. If succeed then add tool message (don't forget
         #    about tool call id), otherwise add tool message with error message (it kind of fallback strategy).
-        raise NotImplementedError()
+        for tool in ai_message.tool_calls:
+            tool_name = tool["function"]["name"]
+            tool_args = json.loads(tool["function"]["arguments"])
+
+            try:
+                tool_result = await self.mcp_client.call_tool(tool_name, tool_args)
+                print(
+                    f"{'-'*80}\nTOOL RESULT: {tool_name}\n\n{tool_result}\n{'-'*80}")
+                messages.append(Message(
+                    role=Role.TOOL,
+                    content=tool_result,
+                    tool_calls=[],
+                    tool_call_id=tool["id"]
+                ))
+            except Exception as e:
+                error_message = f"Error calling tool {tool_name}: {str(e)}"
+                print(error_message)
+                messages.append(Message(
+                    role=Role.TOOL,
+                    content=error_message,
+                    tool_calls=[],
+                    tool_call_id=tool["id"]
+                ))
